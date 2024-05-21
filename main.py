@@ -3,6 +3,8 @@ import pandas as pd
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QLabel, QScrollArea
 
 # Diccionario de meses para usar sus valores numericos.
@@ -104,38 +106,68 @@ def get_files(path):
                full_path = os.path.join(root, f)
                all_files.append(full_path)
     return all_files
-'''
-def send_mail(data_frame):
-    
+
+def send_mail(data_frame, file_path):
+    '''   
     Envia un mail conteniendo un excel formado por
     los nombres de los archivos que hay que notificar
 
     Argumentos:
         data_frame: el archivo excel a enviar
-
+    '''
     
-    sender_email = ""
-    receiver_email = ""
-    sender_pass = ""
+    sender_email = "automation.bst@gmail.com"
+    receiver_email = "federicoresano1@gmail.com"
+    sender_pass = "mrxb dnbt ojcm kata"#"AsQwasqw123"
 
     msg = MIMEMultipart()
     msg['From'] = sender_email
     msg['To'] = receiver_email
     msg['Subject'] = "Legajos"
 
-    msg_body = ""
-    msg.attach(MIMEText(msg_body, 'plain'))
+    msg_body = """
+    <html>
+    <head></head>
+    <body>
+    <p>Hola,</p>
+    <p>Encuentre debajo el estatus de los archivos.</p>
+    <p>Adjunto puede encontrar un archivo con los resultados.</p>
+    <p>Desde ya, muchas gracias.</p>
+    <p>Saludos.</p>
+    <br>
+    <table border="1">
+        <tr>
+            <th>Desactualizados</th>
+            <th>Faltantes</th>
+        </tr>
+    """
 
+    for i in range(len(data_frame)):
+        msg_body += "<tr>"
+        msg_body += f"<td>{data_frame.iloc[i, 0]}</td>"
+        msg_body += f"<td>{data_frame.iloc[i, 1]}</td>"
+        msg_body += "</tr>"
 
-    csv_data = data_frame.to_csv(index=False)
-    attachment = MIMEText(csv_data)
-    attachment.add_header('Content-Disposition', 'attachment', filename='Estatus-de-legajos.csv')
-    msg.attach(attachment)
+    msg_body += """
+    </table>
+    </body>
+    </html>
+    """
 
-    with smtplib.SMTP_SSL('smtp.example.com', 465) as server:
+    msg.attach(MIMEText(msg_body, 'html'))
+
+    with open(file_path, "rb") as attachment:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(attachment.read())
+
+    encoders.encode_base64(part)
+    part.add_header('Content-Disposition', f'attachment; filename={os.path.basename(file_path)}')
+    msg.attach(part)
+
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        #server.starttls()
         server.login(sender_email, sender_pass)
         server.sendmail(sender_email, receiver_email, msg.as_string())
-'''
 
 def check_files(window):
     '''
@@ -189,30 +221,37 @@ def check_files(window):
                         message += "\n\nFaltan los archivos de balances"
 
 
-                if all_outdated_files:
-                    message += "\n======================================================================================="
-                    message += f"\nADVERTENCIA: Los siguients archivos ({len(all_outdated_files)}) estan desactualizados:\n"
-                    message += "======================================================================================="
-                    outdated_list = ""
+        if all_outdated_files:
+                message += "\n======================================================================================="
+                message += f"\nADVERTENCIA: Los siguients archivos ({len(all_outdated_files)}) estan desactualizados:\n"
+                message += "======================================================================================="
+                outdated_list = ""
 
-                    for file_path in all_outdated_files:
-                        outdated_list += f"\n - {file_path}"
+                for file_path in all_outdated_files:
+                    outdated_list += f"\n - {file_path}"
 
-                    message += outdated_list
+                message += outdated_list
 
-                text_area.setText(message if message else "\nNo se encontraron archivos desactualizados o faltantes")
+        text_area.setText(message if message else "\nNo se encontraron archivos desactualizados o faltantes")
+
+        max_length = max(len(all_outdated_files), len(missing_files))
+        
+        pad_outdated_df = all_outdated_files + [''] * (max_length - len(all_outdated_files))
+        pad_missing_df = missing_files + [''] * (max_length - len(missing_files))
+
+        df = pd.DataFrame({
+                "Desactualizados": pad_outdated_df,
+                "Faltantes": pad_missing_df
+            })
 
 
-        outdated_df = pd.DataFrame({"Desactualizados": all_outdated_files})
-        missing_df = pd.DataFrame({"Faltantes": missing_files})
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+        folder_name = os.path.basename(folder_path)
+        excel_name = os.path.join(folder_path, f"Estatus {folder_name} {current_time}.csv")
+        message += f"\nArchivos desactualizados/faltantes escritos en {excel_name}"
+        df.to_csv(excel_name, index=False)
 
-        outdated_excel_name = os.path.join(folder_path, "Legajos-archivos-desactualizados.csv")
-        missing_excel_name = os.path.join(folder_path, "Legajos-archivos-faltantes.csv")
-        outdated_df.to_csv(outdated_excel_name, index=False)
-        missing_df.to_csv(missing_excel_name, index=False)
-
-        # send_mail(data_frame)
-
+        send_mail(df, excel_name)
 
 def is_outdated_yearly(file_year, file_month):
 

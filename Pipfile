@@ -8,6 +8,7 @@ pandas = "*"
 pyqt5 = "*"
 qtwidgets = "*"
 secure-smtplib = "*"
+pyinstaller = "*"
 
 [dev-packages]
 
