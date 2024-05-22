@@ -228,7 +228,7 @@ def check_files(window):
                 outdated_list = ""
 
                 for file_path in all_outdated_files:
-                    outdated_list += f"\n - {file_path}"
+                    outdated_list += f"\n - {os.path.basename(file_path)}"
 
                 message += outdated_list
 
@@ -236,7 +236,7 @@ def check_files(window):
 
         max_length = max(len(all_outdated_files), len(missing_files))
         
-        pad_outdated_df = all_outdated_files + [''] * (max_length - len(all_outdated_files))
+        pad_outdated_df = [os.path.basename(file) for file in all_outdated_files] + [''] * (max_length - len(all_outdated_files))
         pad_missing_df = missing_files + [''] * (max_length - len(missing_files))
 
         df = pd.DataFrame({
