@@ -223,7 +223,7 @@ def check_files(window):
 
         if all_outdated_files:
                 message += "\n======================================================================================="
-                message += f"\nADVERTENCIA: Los siguients archivos ({len(all_outdated_files)}) estan desactualizados:\n"
+                message += f"\nADVERTENCIA: Los siguientes archivos ({len(all_outdated_files)}) estan desactualizados:\n"
                 message += "======================================================================================="
                 outdated_list = ""
 
