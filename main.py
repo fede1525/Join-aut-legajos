@@ -117,7 +117,7 @@ def send_mail(data_frame, file_path):
     '''
     
     sender_email = "automation.bst@gmail.com"
-    receiver_email = "federicoresano1@gmail.com"
+    receiver_email = "Felipelarraindangeli@gmail.com"
     sender_pass = "mrxb dnbt ojcm kata"#"AsQwasqw123"
 
     msg = MIMEMultipart()
@@ -247,9 +247,9 @@ def check_files(window):
 
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
         folder_name = os.path.basename(folder_path)
-        excel_name = os.path.join(folder_path, f"Estatus {folder_name} {current_time}.csv")
+        excel_name = os.path.join(folder_path, f"Estatus {folder_name} {current_time}.xlsx")
         message += f"\nArchivos desactualizados/faltantes escritos en {excel_name}"
-        df.to_csv(excel_name, index=False)
+        df.to_excel(excel_name, index=False)
 
         send_mail(df, excel_name)
 
