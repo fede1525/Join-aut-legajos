@@ -1,0 +1,25 @@
+==== Verificador de archivos ====
+
+El programa funciona de la siguiente manera:
+
+Al iniciar la aplicacion nos encontramos con una ventana vacia con un unico boton: Seleccionar carpeta.
+Dicho boton abrira una ventana que le permitira seleccionar una carpeta de su computadora.
+Debe seleccionar la carpeta especifica del cliente cuyos archivos quiere comprobar, usar la carpeta que
+contiene todos los clientes llevara a errores en la aplicación, pues no mostrara todos los archivos que hacen falta.
+
+Al seleccionar la carpeta, en la ventana previamente vacia aparecera con alertas indicando si hay archivos importantes faltantes
+y/o desactualizados. En caso de que hayan archivos que cumplan esa condicion, se creara un archivo excel que contiene columnas que indican
+que archivos de cada tipo faltan, ese archivo se guardara en la misma carpeta que el programa analizó. Ademas, se enviara un mail con el mismo archivo y
+una vista previa de dicha tabla.
+
+Los archivos deben tener el siguiente patron de nombre:
+
+Nombre abreviado Mes (primeras 3 letras) y año (ultimos 2 números)
+Ejemplos:
+BCE INDIV. DIC 23
+CERTIFI. CUMPLIMIENTO CENSAL AGRO DIC 23
+DDJJ IIGG DIC 23
+DNI
+BCE DIC 21
+BCE DIC 22 
+BCE DIC 23
