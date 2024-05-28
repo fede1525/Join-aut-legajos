@@ -48,8 +48,54 @@ quarterly_updating_files = [
 current_year = str(datetime.datetime.now().year)[-2:]
 current_month = datetime.datetime.now().month
 
+def find_latest_bce_file(files):
+    """
+    Encuentra el archivo más reciente de los archivos BCE.
+
+    Argumentos:
+        files: Lista de archivos BCE.
+
+    Retorna:
+        El archivo BCE más reciente.
+    """
+    latest_bce_file = None
+    latest_date = None
+
+    for file in files:
+        match = re.search(r".*BCE (\w{3}) (\d{2})", file, re.IGNORECASE)
+        if match:
+            file_month_str = match.group(1)
+            file_year = match.group(2)
+            if file_month_str in months:
+                file_month = months[file_month_str]
+                file_date = datetime.date(int("20" + file_year), file_month, 1)
+                if not latest_date or file_date > latest_date:
+                    latest_date = file_date
+                    latest_bce_file = file
+
+    return latest_bce_file
+
+def extract_year_month(filename):
+    """
+    Extrae el año y mes de un nombre de archivo.
+
+    Argumentos:
+        filename: El nombre del archivo.
+
+    Retorna:
+        Una tupla (año, mes).
+    """
+    match = re.search(r".*(\w{3}) (\d{2})", filename)
+    if match:
+        file_month_str = match.group(1)
+        file_year = match.group(2)
+        if file_month_str in months:
+            file_month = months[file_month_str]
+            return int("20" + file_year), file_month
+    return None, None
+
 def find_outdated_files(path):
-   """
+    """
     Lee los archivos buscando aquellos que tengan meses y años declarados,
     e invocando metodos para comprobar si estan desactualizados.
 
@@ -58,14 +104,23 @@ def find_outdated_files(path):
 
     Retorna:
         outdated_files: Un array que contiene la ruta/nombre de cada archivo desactualizado.
-   """
+    """
+    outdated_files = []
+    all_files = get_files(path)
 
-   outdated_files = []
-   all_files = get_files(path)
+    bce_files = [file for file in all_files if re.search(r".*BCE (\w{3}) (\d{2})", file, re.IGNORECASE)]
+    latest_bce_file = find_latest_bce_file(bce_files)
 
-   for file_path in all_files:
+    if latest_bce_file:
+        latest_year, latest_month = extract_year_month(latest_bce_file)
+        if not is_outdated_yearly(latest_year, latest_month):
+            bce_files.remove(latest_bce_file)
+
+    for file_path in all_files:
+        if "BCE" in file_path:
+            continue  # Skip BCE files as they are already processed
+
         filename, _ = os.path.splitext(file_path)
-
         filename_parts = filename.split(None, 1)
 
         if filename_parts[0] in non_updating_files:
@@ -86,7 +141,7 @@ def find_outdated_files(path):
                     if is_outdated_quarterly(file_month, reference_date):
                         outdated_files.append(file_path)
 
-   return outdated_files 
+    return outdated_files
 
 def get_files(path):
 
@@ -110,14 +165,14 @@ def get_files(path):
 def send_mail(data_frame, file_path):
     '''   
     Envia un mail conteniendo un excel formado por
-    los nombres de los archivos que hay que notificar
+    los nombres de los archivos que hay que notificar.
 
     Argumentos:
-        data_frame: el archivo excel a enviar
+        data_frame: el archivo excel a enviar.
     '''
     
     sender_email = "automation.bst@gmail.com"
-    receiver_email = "Felipelarraindangeli@gmail.com"
+    receiver_email = "federicoresano1@gmail.com" #"arojas@bst.com.ar"
     sender_pass = "mrxb dnbt ojcm kata"#"AsQwasqw123"
 
     msg = MIMEMultipart()
@@ -169,6 +224,7 @@ def send_mail(data_frame, file_path):
         server.login(sender_email, sender_pass)
         server.sendmail(sender_email, receiver_email, msg.as_string())
 
+
 def check_files(window):
     '''
     Recorre todos los archivos de una carpeta recursivamente,
@@ -180,78 +236,87 @@ def check_files(window):
         la interfaz
     '''
     folder_path = select_folder()
-    if folder_path:
-        all_files = get_files(folder_path)
-        all_outdated_files = find_outdated_files(folder_path)
+    if not folder_path:
+        return
 
-        important_files = [
-            "BCE",
-            "ASAMBLEA",
-            "DIRECTORIO",
-            "FLUJOS",
-            "FLUJOS PREMISAS",
-            "GRUPO ECO. 2005",
-            "CLIEN. NO VINC 2006"
-        ]
-        
-        missing_files = []
+    all_files = get_files(folder_path)
+    all_outdated_files = find_outdated_files(folder_path)
 
-        for file_name in important_files:
-            if not any(file_name.lower() in file_path.lower() for file_path in all_files):
-                missing_files.append(file_name)
+    important_files = {
+        "BCE": 3,
+        "ASAMBLEA": 1,
+        "DIRECTORIO": 1,
+        "FLUJOS": 1,
+        "FLUJOS PREMISAS": 1,
+        "GRUPO ECO. 2005": 1,
+        "CLIEN. NO VINC 2006": 1
+    }
+    
+    missing_files = []
+    file_count = {key: 0 for key in important_files.keys()}
 
-        text_area = window.findChild(QLabel)
-        message = ""
+    for file_path in all_files:
+        lower_path = file_path.lower()
+        for key in important_files.keys():
+            if key.lower() in lower_path:
+                file_count[key] += 1
 
-        if missing_files:
-                missing_files_str = "\n".join(missing_files)
-                message =  "======================================================================================="
-                message += f"\nIMPORTANTE: Faltan los siguientes ({len(missing_files)}) archivos importantes:"
-                message += "\n=======================================================================================\n"
+    non_updating_missing_files = []
+    for non_updating_file in non_updating_files:
+        if not any(non_updating_file.lower() in os.path.basename(file).lower() for file in all_files):
+            non_updating_missing_files.append(non_updating_file)
 
-                message += missing_files_str
+    text_area = window.findChild(QLabel, "textArea")
+    message = ""
 
-                bce_files = [file for file in all_files if "BCE".lower() in file.lower()]
-                if len(bce_files) < 3:
-                    if len(bce_files) == 2:
-                        message += "\n\nFalta 1 archivo de balances"
-                    elif len(bce_files) == 1:
-                        message += "\n\nFaltan 2 archivos de balances"
-                    elif len(bce_files) == 0:
-                        message += "\n\nFaltan los archivos de balances"
+    if missing_files:
+        missing_files_str = "\n".join(missing_files)
+        message += (
+            "=======================================================================================\n"
+            f"IMPORTANTE: Faltan los siguientes ({len(missing_files)}) archivos importantes:\n"
+            "=======================================================================================\n"
+            f"{missing_files_str}\n"
+        )
 
+    if non_updating_missing_files:
+        non_updating_missing_files_str = "\n".join(non_updating_missing_files)
+        message += (
+            "=======================================================================================\n"
+            f"IMPORTANTE: Faltan los siguientes ({len(non_updating_missing_files)}) archivos no actualizables:\n"
+            "=======================================================================================\n"
+            f"{non_updating_missing_files_str}\n"
+        )
 
-        if all_outdated_files:
-                message += "\n======================================================================================="
-                message += f"\nADVERTENCIA: Los siguientes archivos ({len(all_outdated_files)}) estan desactualizados:\n"
-                message += "======================================================================================="
-                outdated_list = ""
+    if all_outdated_files:
+        message += (
+            "=======================================================================================\n"
+            f"ADVERTENCIA: Los siguientes archivos ({len(all_outdated_files)}) estan desactualizados:\n"
+            "=======================================================================================\n"
+        )
+        outdated_list = "\n".join(f" - {os.path.basename(file_path)}" for file_path in all_outdated_files)
+        message += outdated_list
 
-                for file_path in all_outdated_files:
-                    outdated_list += f"\n - {os.path.basename(file_path)}"
+    text_area.setText(message if message else "\nNo se encontraron archivos desactualizados o faltantes")
 
-                message += outdated_list
+    combined_missing_files = missing_files + non_updating_missing_files
 
-        text_area.setText(message if message else "\nNo se encontraron archivos desactualizados o faltantes")
+    max_length = max(len(all_outdated_files), len(combined_missing_files))
+    
+    pad_outdated_df = [os.path.basename(file) for file in all_outdated_files] + [''] * (max_length - len(all_outdated_files))
+    pad_combined_missing_df = combined_missing_files + [''] * (max_length - len(combined_missing_files))
 
-        max_length = max(len(all_outdated_files), len(missing_files))
-        
-        pad_outdated_df = [os.path.basename(file) for file in all_outdated_files] + [''] * (max_length - len(all_outdated_files))
-        pad_missing_df = missing_files + [''] * (max_length - len(missing_files))
+    df = pd.DataFrame({
+        "Desactualizados": pad_outdated_df,
+        "Faltantes": pad_combined_missing_df
+    })
 
-        df = pd.DataFrame({
-                "Desactualizados": pad_outdated_df,
-                "Faltantes": pad_missing_df
-            })
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+    folder_name = os.path.basename(folder_path)
+    excel_name = os.path.join(folder_path, f"Estatus {folder_name} {current_time}.xlsx")
+    message += f"\nArchivos desactualizados/faltantes escritos en {excel_name}"
+    df.to_excel(excel_name, index=False)
 
-
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-        folder_name = os.path.basename(folder_path)
-        excel_name = os.path.join(folder_path, f"Estatus {folder_name} {current_time}.xlsx")
-        message += f"\nArchivos desactualizados/faltantes escritos en {excel_name}"
-        df.to_excel(excel_name, index=False)
-
-        send_mail(df, excel_name)
+    send_mail(df, excel_name)
 
 def is_outdated_yearly(file_year, file_month):
 
@@ -325,6 +390,7 @@ def main():
     layout.addWidget(select_folder_button)
 
     text_area = QLabel("")
+    text_area.setObjectName("textArea")
     text_area.setWordWrap(True)
     text_area.setStyleSheet("border: 1px solid black")
 
