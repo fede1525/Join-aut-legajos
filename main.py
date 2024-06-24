@@ -64,7 +64,7 @@ def get_client_type(folder_name):
     Returns:
         client_type: Un string que representa el tipo de cliente ('persona', 'pyme', 'empresa').
     """
-    subfolders = next(os.walk(folder_name))[1]
+    subfolders = next(os.walk(folder_name), (None, [], []))[1]
     if not subfolders:
         return "La carpeta esta vacia"
     for subfolder in subfolders:
@@ -202,7 +202,7 @@ def find_outdated_files(path):
 
     for file_path in all_files:
         if "BCE" in file_path:
-            continue  # Skip BCE files as they are already processed
+            continue 
 
         filename, _ = os.path.splitext(file_path)
         filename_parts = filename.split(None, 1)
