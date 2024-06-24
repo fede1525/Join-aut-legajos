@@ -90,34 +90,7 @@ required_files = {
         "BCE","VENT", "DEUD", "ACTA DIRECTORIO", "FLUJOS", "FLUJOS PREMISAS", "ACTA ASAMBLEA", "GRUPO ECO. 2005", "CLIEN. NO VINC 2006", "FORM 1025"
     ]
 }
-'''
-def find_latest_bce_file(files):
-    """
-    Encuentra el archivo más reciente de los archivos BCE.
 
-    Argumentos:
-        files: Lista de archivos BCE.
-
-    Retorna:
-        El archivo BCE más reciente.
-    """
-    latest_bce_file = None
-    latest_date = None
-
-    for file in files:
-        match = re.search(r".*BCE (\w{3}) (\d{2})", file, re.IGNORECASE)
-        if match:
-            file_month_str = match.group(1)
-            file_year = match.group(2)
-            if file_month_str in months:
-                file_month = months[file_month_str]
-                file_date = datetime.date(int("20" + file_year), file_month, 1)
-                if not latest_date or file_date > latest_date:
-                    latest_date = file_date
-                    latest_bce_file = file
-
-    return latest_bce_file
-'''
 def get_current_year_bce_files():
     """
     Obtiene los nombres esperados de los archivos BCE para el año actual, el año anterior y dos años antes.
@@ -220,10 +193,10 @@ def find_outdated_files(path):
                 reference_date = int(file_year)
 
                 if is_outdated_yearly(int(file_year), file_month):
-                    outdated_files.append(file_path)
+                    outdated_files.append((file_path, os.path.basename(path)))
                 elif filename in quarterly_updating_files:
                     if is_outdated_quarterly(file_month, reference_date):
-                        outdated_files.append(file_path)
+                        outdated_files.append((file_path, os.path.basename(path)))
 
     return outdated_files
 
@@ -352,12 +325,12 @@ def check_files(window):
 
     for key, count in file_count.items():
         if count < 1:  
-            missing_files.append(f"{key}")
+            missing_files.append(f"{key} ({folder_name})")
 
     non_updating_missing_files = []
     for non_updating_file in important_files:
         if not any(non_updating_file.lower() in file.lower() for file in all_files):
-            non_updating_missing_files.append(non_updating_file)
+            non_updating_missing_files.append(f"{non_updating_file} ({folder_name})")
 
     message = ""
 
@@ -384,16 +357,16 @@ def check_files(window):
     if all_outdated_files:
         message += (
             "=======================================================================================\n"
-            f"ADVERTENCIA: Los siguientes archivos ({len(all_outdated_files)}) estan desactualizados:\n"
+            f"ADVERTENCIA: Los siguientes archivos ({len(all_outdated_files)}) están desactualizados:\n"
             "=======================================================================================\n"
         )
-        outdated_list = "\n".join(f" - {os.path.basename(file_path).replace('.', '')} ({os.path.basename(os.path.dirname(file_path))})" for file_path in all_outdated_files)
+        outdated_list = "\n".join(f" - {os.path.basename(file[0]).replace('.', '')} ({file[1]})" for file in all_outdated_files)
         message += outdated_list
 
     max_length = max(len(all_outdated_files), len(missing_files + non_updating_missing_files))
 
-    combined_files_outdated = [f"{os.path.basename(file).replace('.', '')} ({os.path.basename(os.path.dirname(file))})" for file in all_outdated_files] + [''] * (max_length - len(all_outdated_files))
-    combined_files_missing = [f"{file} ({os.path.basename(folder_path)})" for file in (missing_files + non_updating_missing_files)] + [''] * (max_length - len(missing_files + non_updating_missing_files))
+    combined_files_outdated = [f"{os.path.basename(file[0]).replace('.', '')} ({file[1]})" for file in all_outdated_files] + [''] * (max_length - len(all_outdated_files))
+    combined_files_missing = [f"{file} ({folder_name})" for file in (missing_files + non_updating_missing_files)] + [''] * (max_length - len(missing_files + non_updating_missing_files))
 
     df = pd.DataFrame({
         "Desactualizados": combined_files_outdated,
