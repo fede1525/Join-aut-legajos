@@ -64,14 +64,18 @@ def get_client_type(folder_name):
     Returns:
         client_type: Un string que representa el tipo de cliente ('persona', 'pyme', 'empresa').
     """
-    if re.search(r"\b\d{2}-\d{8}-\d\b", folder_name):
-        return 'persona'
-    elif 'PYME' in folder_name.upper():
-        return 'pyme'
-    elif re.search(r"\b\d{11}\b", folder_name):
-        return 'empresa'
-    else:
-        return 'unknown'
+    subfolders = next(os.walk(folder_name))[1]
+    if not subfolders:
+        return "La carpeta esta vacia"
+    for subfolder in subfolders:
+        if re.search(r"\b\d{2}-\d{8}-\d\b", subfolder):
+            return 'persona'
+        elif 'PYME' in subfolder.upper():
+            return 'pyme'
+        elif re.search(r"\b\d{11}\b", subfolder):
+            return 'empresa'
+    
+    return 'desconocido'
     
 required_files = {
     'persona': [
@@ -86,7 +90,7 @@ required_files = {
         "BCE","VENT", "DEUD", "ACTA DIRECTORIO", "FLUJOS", "FLUJOS PREMISAS", "ACTA ASAMBLEA", "GRUPO ECO. 2005", "CLIEN. NO VINC 2006", "FORM 1025"
     ]
 }
-
+'''
 def find_latest_bce_file(files):
     """
     Encuentra el archivo más reciente de los archivos BCE.
@@ -113,7 +117,7 @@ def find_latest_bce_file(files):
                     latest_bce_file = file
 
     return latest_bce_file
-
+'''
 def get_current_year_bce_files():
     """
     Obtiene los nombres esperados de los archivos BCE para el año actual, el año anterior y dos años antes.
