@@ -193,10 +193,10 @@ def find_outdated_files(path):
                 reference_date = int(file_year)
 
                 if is_outdated_yearly(int(file_year), file_month):
-                    outdated_files.append((file_path, os.path.basename(path)))
+                    outdated_files.append((file_path, os.path.dirname(path)))
                 elif filename in quarterly_updating_files:
                     if is_outdated_quarterly(file_month, reference_date):
-                        outdated_files.append((file_path, os.path.basename(path)))
+                        outdated_files.append((file_path, os.path.dirname(path)))
 
     return outdated_files
 
@@ -288,6 +288,24 @@ def send_mail(data_frame, file_path):
     except Exception as e:
         logger.error("Error: %s", e)
 
+def write_excel_report(report_data, output_path):
+    """
+    Escribe un excel en el directorio que contiene los clientes.
+
+    Arguments:
+        report_data: Diccionario que contiene la información para el reporte.
+        output_path: Directorio donde el excel se escribe.
+    """
+    writer = pd.ExcelWriter(output_path, engine='xlsxwriter')
+
+    for client, data in report_data.items():
+        if not data:
+            continue
+        df = pd.DataFrame(data, columns=['Desactualizados', 'Faltantes'])
+        df.to_excel(writer, sheet_name=client, index=False)
+
+    writer._save()
+
 def check_files(window):
     '''
     Recorre todos los archivos de una carpeta recursivamente,
@@ -301,85 +319,86 @@ def check_files(window):
     folder_path = select_folder()
     if not folder_path:
         return
-
-    folder_name = os.path.basename(folder_path)
-    client_type = get_client_type(folder_name)
-
-    if client_type == 'unknown':
-        QMessageBox.warning(window, "Error", "No se pudo determinar el tipo de cliente.")
+    
+    client_folders = next(os.walk(folder_path))[1]
+    if not client_folders:
+        QMessageBox.warning(window, "Error", "No se encontraron carpetas de clientes.")
         return
 
-    all_files = get_files(folder_path)
-    all_outdated_files = find_outdated_files(folder_path)
+    all_outdated_files = {}
+    all_missing_files = {}
 
-    important_files = required_files.get(client_type, {})
+    for client_folder in client_folders:
+        client_path = os.path.join(folder_path, client_folder)
+        client_type = get_client_type(client_path)
 
-    missing_files = []
-    file_count = {key: 0 for key in important_files}
+        if client_type == 'unknown':
+            logger.warning("No se pudo determinar el tipo de cliente para la carpeta %s.", client_folder)
+            continue
 
-    for file_path in all_files:
-        lower_path = file_path.lower()
-        for key in important_files:
-            if key.lower() in lower_path:
-                file_count[key] += 1
+        all_files = get_files(client_path)
+        outdated_files = find_outdated_files(client_path)
+        important_files = required_files.get(client_type, {})
 
-    for key, count in file_count.items():
-        if count < 1:  
-            missing_files.append(f"{key} ({folder_name})")
+        missing_files = []
+        file_count = {key: 0 for key in important_files}
 
-    non_updating_missing_files = []
-    for non_updating_file in important_files:
-        if not any(non_updating_file.lower() in file.lower() for file in all_files):
-            non_updating_missing_files.append(f"{non_updating_file} ({folder_name})")
+        for file_path in all_files:
+            lower_path = file_path.lower()
+            for key in important_files:
+                if key.lower() in lower_path:
+                    file_count[key] += 1
+
+        for key, count in file_count.items():
+            if count < 1:
+                missing_files.append(f"{key} ({client_folder})")
+
+        non_updating_missing_files = []
+        for non_updating_file in important_files:
+            if not any(non_updating_file.lower() in file.lower() for file in all_files):
+                non_updating_missing_files.append(f"{non_updating_file} ({client_folder})")
+
+        all_outdated_files[client_folder] = [(os.path.basename(file[0]).replace('.', ''), file[1]) for file in outdated_files]
+        all_missing_files[client_folder] = missing_files + non_updating_missing_files
 
     message = ""
 
-    if missing_files or non_updating_missing_files:
-        if missing_files:
-            missing_files_str = "\n".join(missing_files)
-            message += (
-                "=======================================================================================\n"
-                f"IMPORTANTE: Faltan los siguientes ({len(missing_files)}) archivos importantes:\n"
-                "=======================================================================================\n"
-                f"{missing_files_str}\n"
-            )
-        if non_updating_missing_files:
-            non_updating_missing_files_str = "\n".join(non_updating_missing_files)
-            message += (
-                "=======================================================================================\n"
-                f"IMPORTANTE: Faltan los siguientes ({len(non_updating_missing_files)}) archivos:\n"
-                "=======================================================================================\n"
-                f"{non_updating_missing_files_str}\n"
-            )
-    else:
-        message = "\nNo se encontraron archivos desactualizados o faltantes."
+    if any(all_missing_files.values()):
+        for client_folder, missing_files in all_missing_files.items():
+            if missing_files:
+                missing_files_str = "\n".join(missing_files)
+                message += (
+                    "=======================================================================================\n"
+                    f"IMPORTANTE: Faltan los siguientes ({len(missing_files)}) archivos importantes para el cliente {client_folder}:\n"
+                    "=======================================================================================\n"
+                    f"{missing_files_str}\n"
+                )
 
-    if all_outdated_files:
-        message += (
-            "=======================================================================================\n"
-            f"ADVERTENCIA: Los siguientes archivos ({len(all_outdated_files)}) están desactualizados:\n"
-            "=======================================================================================\n"
-        )
-        outdated_list = "\n".join(f" - {os.path.basename(file[0]).replace('.', '')} ({file[1]})" for file in all_outdated_files)
-        message += outdated_list
+    if any(all_outdated_files.values()):
+        for client_folder, outdated_files in all_outdated_files.items():
+            if outdated_files:
+                message += (
+                    "=======================================================================================\n"
+                    f"ADVERTENCIA: Los siguientes archivos ({len(outdated_files)}) están desactualizados para el cliente {client_folder}:\n"
+                    "=======================================================================================\n"
+                )
+                outdated_list = "\n".join(f" - {file[0]} ({file[1]})" for file in outdated_files)
+                message += outdated_list + "\n"
 
-    max_length = max(len(all_outdated_files), len(missing_files + non_updating_missing_files))
+    if not message:
+        message = "\nNo se encontraron archivos desactualizados o faltantes para ninguno de los clientes."
 
-    combined_files_outdated = [f"{os.path.basename(file[0]).replace('.', '')} ({file[1]})" for file in all_outdated_files] + [''] * (max_length - len(all_outdated_files))
-    combined_files_missing = [f"{file} ({folder_name})" for file in (missing_files + non_updating_missing_files)] + [''] * (max_length - len(missing_files + non_updating_missing_files))
+    report_data = {}
 
-    df = pd.DataFrame({
-        "Desactualizados": combined_files_outdated,
-        "Faltantes": combined_files_missing
-    })
+    for client, outdated_files in all_outdated_files.items():
+        missing_files = all_missing_files.get(client, [])
+        report_data[client] = [(out_file[0], "") for out_file in outdated_files] + [(miss_file, "") for miss_file in missing_files]
 
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-    folder_name = os.path.basename(folder_path)
-    excel_name = os.path.join(folder_path, f"Estatus {folder_name} {current_time}.xlsx")
-    message += f"\nArchivos desactualizados/faltantes escritos en {excel_name}"
-    df.to_excel(excel_name, index=False)
-
-    send_mail(df, excel_name)
+    if report_data:
+        parent_folder = os.path.dirname(folder_path)
+        report_filename = os.path.join(parent_folder, 'Resultado_de_verificacion.xlsx')
+        write_excel_report(report_data, report_filename)
+        QMessageBox.information(window, "Reporte Creado", f"Se ha creado el reporte en: {report_filename}")
 
     popup = QMessageBox(window)
     popup.setWindowTitle("Resultados de la Verificación")
