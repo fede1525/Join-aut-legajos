@@ -5,7 +5,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QLabel, QScrollArea
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QMessageBox
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Diccionario de meses para usar sus valores numericos.
 months = {
@@ -31,25 +35,124 @@ non_updating_files = [
     "DDJJ PJ 1014",
     "DDJJ SO 1013",
     "1026",
-    "Autoriza. Apod. 1015",
+    "AUTORIZA. APOD. 1015",
     "RF 1016",
-    "Solic. Datos 1004",
+    "SOLIC. DATOS 1004",
     "BF 1023",
-    "DNI Autoriza",
+    "DNI AUTORIZA.",
     "PODERES",
 ]
 
 # Estos archivos se actualizan cada 3 meses
 quarterly_updating_files = [
-    "VENTAS",
-    "DEUDAS",
+    #"VENTAS",
+    "VENT",
+    "DEUD",
+    #"DEUDAS",
 ]
 
 current_year = str(datetime.datetime.now().year)[-2:]
 current_month = datetime.datetime.now().month
 
+def get_client_type(folder_name):
+    """
+    Identifica el tipo de cliente basado en el nombre de la carpeta.
+
+    Arguments:
+        folder_name: Nombre de la carpeta.
+
+    Returns:
+        client_type: Un string que representa el tipo de cliente ('persona', 'pyme', 'empresa').
+    """
+    subfolders = next(os.walk(folder_name), (None, [], []))[1]
+    if not subfolders:
+        return "La carpeta esta vacia"
+    for subfolder in subfolders:
+        if re.search(r"\b\d{2}-\d{8}-\d\b", subfolder):
+            return 'persona'
+        elif 'PYME' in subfolder.upper():
+            return 'pyme'
+        elif re.search(r"\b\d{11}\b", subfolder):
+            return 'empresa'
+    
+    return 'desconocido'
+    
+required_files = {
+    'persona': [
+        "AFIP", "BCE INDIV.", "CERTIFI. CUMPLIMIENTO CENSAL AGRO", "CERTIFI. CUMPLIMIENTO CENSAL", "DDJJ BIENES PERS.", "DDJJ IIGG",
+        "DDJJ VINCULACIÓN ENTIDAD", "DNI", "FONDOS", "INFO. LEGAL", "DNI AUTORIZA", "PODERES"
+    ],
+    'pyme': [
+        "BCE", "VENT", "DEUD", "FLUJOS", "ACTA DE DIRECTORIO", "ESTATUTO", "REFORMA DE ESTATUTO", "PODERES", "FORM. 1025", "FORM. 2006", "FORM. 2005", "DDJJ PJ 1014", "DDJJ SO 1013",
+        "AUTORIZA. APOD. 1015", "RF 1016", "SOLIC. DATOS 1004", "BF 1023", "AFIP", "DNI AUTORIZA.", "DDJJ VINCULACIÓN ENTIDAD", "CERTIFICADO MIPYME"
+    ],
+    'empresa': [
+        "BCE","VENT", "DEUD", "ACTA DIRECTORIO", "FLUJOS", "FLUJOS PREMISAS", "ACTA ASAMBLEA", "GRUPO ECO. 2005", "CLIEN. NO VINC 2006", "FORM 1025"
+    ]
+}
+
+def get_current_year_bce_files():
+    """
+    Obtiene los nombres esperados de los archivos BCE para el año actual, el año anterior y dos años antes.
+
+    Retorna:
+        expected_bce_files: Lista con los nombres de los archivos BCE esperados.
+    """
+    current_year = datetime.datetime.now().year
+    return [
+        f"BCE DIC {str(current_year)[-2:]}",
+        f"BCE DIC {str(current_year - 1)[-2:]}",
+        f"BCE DIC {str(current_year - 2)[-2:]}"
+    ]
+
+def find_latest_bce_file(files):
+    """
+    Encuentra el archivo más reciente de los archivos BCE.
+
+    Argumentos:
+        files: Lista de archivos BCE.
+
+    Retorna:
+        El archivo BCE más reciente.
+    """
+    latest_bce_file = None
+    latest_date = None
+
+    for file in files:
+        match = re.search(r".*BCE (\w{3}) (\d{2})", file, re.IGNORECASE)
+        if match:
+            file_month_str = match.group(1)
+            file_year = match.group(2)
+            if file_month_str in months:
+                file_month = months[file_month_str]
+                file_date = datetime.date(int("20" + file_year), file_month, 1)
+                if not latest_date or file_date > latest_date:
+                    latest_date = file_date
+                    latest_bce_file = file
+
+    return latest_bce_file
+
+def extract_year_month(filename):
+    """
+    Extrae el año y mes de un nombre de archivo.
+
+    Argumentos:
+        filename: El nombre del archivo.
+
+    Retorna:
+        Una tupla (año, mes).
+    """
+    match = re.search(r".*(\w{3}) (\d{2})", filename)
+    if match:
+        file_month_str = match.group(1)
+        file_year = match.group(2)
+        if file_month_str in months:
+            file_month = months[file_month_str]
+            return int("20" + file_year), file_month
+    return None, None
+
 def find_outdated_files(path):
-   """
+    """
     Lee los archivos buscando aquellos que tengan meses y años declarados,
     e invocando metodos para comprobar si estan desactualizados.
 
@@ -58,14 +161,23 @@ def find_outdated_files(path):
 
     Retorna:
         outdated_files: Un array que contiene la ruta/nombre de cada archivo desactualizado.
-   """
+    """
+    outdated_files = []
+    all_files = get_files(path)
 
-   outdated_files = []
-   all_files = get_files(path)
+    bce_files = [file for file in all_files if re.search(r".*BCE (\w{3}) (\d{2})", file, re.IGNORECASE)]
+    latest_bce_file = find_latest_bce_file(bce_files)
 
-   for file_path in all_files:
+    if latest_bce_file:
+        latest_year, latest_month = extract_year_month(latest_bce_file)
+        if not is_outdated_yearly(latest_year, latest_month):
+            bce_files.remove(latest_bce_file)
+
+    for file_path in all_files:
+        if "BCE" in file_path:
+            continue 
+
         filename, _ = os.path.splitext(file_path)
-
         filename_parts = filename.split(None, 1)
 
         if filename_parts[0] in non_updating_files:
@@ -81,15 +193,14 @@ def find_outdated_files(path):
                 reference_date = int(file_year)
 
                 if is_outdated_yearly(int(file_year), file_month):
-                    outdated_files.append(file_path)
+                    outdated_files.append((file_path, os.path.dirname(path)))
                 elif filename in quarterly_updating_files:
                     if is_outdated_quarterly(file_month, reference_date):
-                        outdated_files.append(file_path)
+                        outdated_files.append((file_path, os.path.dirname(path)))
 
-   return outdated_files 
+    return outdated_files
 
 def get_files(path):
-
     """
     Consigue todos los archivos en una ruta dada.
 
@@ -99,13 +210,13 @@ def get_files(path):
     Retorna:
         all_files: Un array que contiene los archivos de la carpeta.
     """
-
     all_files = []
     for root, _, files in os.walk(path):
-           for f in files:
-               full_path = os.path.join(root, f)
-               all_files.append(full_path)
+        for f in files:
+            full_path = os.path.join(root, f)
+            all_files.append(full_path)
     return all_files
+
 
 def send_mail(data_frame, file_path):
     '''   
@@ -115,10 +226,9 @@ def send_mail(data_frame, file_path):
     Argumentos:
         data_frame: el archivo excel a enviar
     '''
-    
     sender_email = "automation.bst@gmail.com"
-    receiver_email = "Felipelarraindangeli@gmail.com"
-    sender_pass = "mrxb dnbt ojcm kata"#"AsQwasqw123"
+    receiver_email = "vracauchi@grupost.com.ar"#"arojas@bst.com.ar"
+    sender_pass = "mrxb dnbt ojcm kata"
 
     msg = MIMEMultipart()
     msg['From'] = sender_email
@@ -155,19 +265,28 @@ def send_mail(data_frame, file_path):
     """
 
     msg.attach(MIMEText(msg_body, 'html'))
+    try:
+        with open(file_path, "rb") as attachment:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(attachment.read())
 
-    with open(file_path, "rb") as attachment:
-        part = MIMEBase("application", "octet-stream")
-        part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f'attachment; filename={os.path.basename(file_path)}')
+        msg.attach(part)
 
-    encoders.encode_base64(part)
-    part.add_header('Content-Disposition', f'attachment; filename={os.path.basename(file_path)}')
-    msg.attach(part)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            #server.ttls()
+            server.login(sender_email, sender_pass)
+            server.sendmail(sender_email, receiver_email, msg.as_string())
 
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        #server.starttls()
-        server.login(sender_email, sender_pass)
-        server.sendmail(sender_email, receiver_email, msg.as_string())
+              
+        logger.info("Email enviado a %s", receiver_email)
+    except smtplib.SMTPAuthenticationError:
+        logger.error("Fallo la autenticacion con el servidor SMTP. Usuario y contraseña incorrectos.")
+    except smtplib.SMTPException as e:
+        logger.error("Error de STMP: %s", e)
+    except Exception as e:
+        logger.error("Error: %s", e)
 
 def check_files(window):
     '''
@@ -176,82 +295,86 @@ def check_files(window):
     o que falten y los muestra en una ventana si los hay o no.
 
     Argumentos:
-        window: usado mas adelante con la libreria PyQt5 para crear
-        la interfaz
+        window: Usado mas adelante con la libreria PyQt5 para crear
+        la interfaz.
     '''
     folder_path = select_folder()
-    if folder_path:
-        all_files = get_files(folder_path)
-        all_outdated_files = find_outdated_files(folder_path)
+    if not folder_path:
+        return
+    
+    client_folders = next(os.walk(folder_path))[1]
+    if not client_folders:
+        QMessageBox.warning(window, "Error", "No se encontraron carpetas de clientes.")
+        return
 
-        important_files = [
-            "BCE",
-            "ASAMBLEA",
-            "DIRECTORIO",
-            "FLUJOS",
-            "FLUJOS PREMISAS",
-            "GRUPO ECO. 2005",
-            "CLIEN. NO VINC 2006"
-        ]
-        
+    all_outdated_files = {}
+    all_missing_files = {}
+
+    for client_folder in client_folders:
+        client_path = os.path.join(folder_path, client_folder)
+        client_type = get_client_type(client_path)
+
+        if client_type == 'unknown':
+            logger.warning("No se pudo determinar el tipo de cliente para la carpeta %s.", client_folder)
+            continue
+
+        all_files = get_files(client_path)
+        outdated_files = find_outdated_files(client_path)
+        important_files = required_files.get(client_type, {})
+
         missing_files = []
+        file_count = {key: 0 for key in important_files}
 
-        for file_name in important_files:
-            if not any(file_name.lower() in file_path.lower() for file_path in all_files):
-                missing_files.append(file_name)
+        for file_path in all_files:
+            lower_path = file_path.lower()
+            for key in important_files:
+                if key.lower() in lower_path:
+                    file_count[key] += 1
 
-        text_area = window.findChild(QLabel)
-        message = ""
+        for key, count in file_count.items():
+            if count < 1:
+                missing_files.append(f"{key} ({client_folder})")
 
-        if missing_files:
+        non_updating_missing_files = []
+        for non_updating_file in important_files:
+            if not any(non_updating_file.lower() in file.lower() for file in all_files):
+                non_updating_missing_files.append(f"{non_updating_file} ({client_folder})")
+
+        all_outdated_files[client_folder] = [(os.path.basename(file[0]).replace('.', ''), file[1]) for file in outdated_files]
+        all_missing_files[client_folder] = missing_files + non_updating_missing_files
+
+    message = ""
+
+    if any(all_missing_files.values()):
+        for client_folder, missing_files in all_missing_files.items():
+            if missing_files:
                 missing_files_str = "\n".join(missing_files)
-                message =  "======================================================================================="
-                message += f"\nIMPORTANTE: Faltan los siguientes ({len(missing_files)}) archivos importantes:"
-                message += "\n=======================================================================================\n"
+                message += (
+                    "=======================================================================================\n"
+                    f"IMPORTANTE: Faltan los siguientes ({len(missing_files)}) archivos importantes para el cliente {client_folder}:\n"
+                    "=======================================================================================\n"
+                    f"{missing_files_str}\n"
+                )
 
-                message += missing_files_str
+    if any(all_outdated_files.values()):
+        for client_folder, outdated_files in all_outdated_files.items():
+            if outdated_files:
+                message += (
+                    "=======================================================================================\n"
+                    f"ADVERTENCIA: Los siguientes archivos ({len(outdated_files)}) están desactualizados para el cliente {client_folder}:\n"
+                    "=======================================================================================\n"
+                )
+                outdated_list = "\n".join(f" - {file[0]} ({file[1]})" for file in outdated_files)
+                message += outdated_list + "\n"
 
-                bce_files = [file for file in all_files if "BCE".lower() in file.lower()]
-                if len(bce_files) < 3:
-                    if len(bce_files) == 2:
-                        message += "\n\nFalta 1 archivo de balances"
-                    elif len(bce_files) == 1:
-                        message += "\n\nFaltan 2 archivos de balances"
-                    elif len(bce_files) == 0:
-                        message += "\n\nFaltan los archivos de balances"
+    if not message:
+        message = "\nNo se encontraron archivos desactualizados o faltantes para ninguno de los clientes."
 
-
-        if all_outdated_files:
-                message += "\n======================================================================================="
-                message += f"\nADVERTENCIA: Los siguientes archivos ({len(all_outdated_files)}) estan desactualizados:\n"
-                message += "======================================================================================="
-                outdated_list = ""
-
-                for file_path in all_outdated_files:
-                    outdated_list += f"\n - {os.path.basename(file_path)}"
-
-                message += outdated_list
-
-        text_area.setText(message if message else "\nNo se encontraron archivos desactualizados o faltantes")
-
-        max_length = max(len(all_outdated_files), len(missing_files))
-        
-        pad_outdated_df = [os.path.basename(file) for file in all_outdated_files] + [''] * (max_length - len(all_outdated_files))
-        pad_missing_df = missing_files + [''] * (max_length - len(missing_files))
-
-        df = pd.DataFrame({
-                "Desactualizados": pad_outdated_df,
-                "Faltantes": pad_missing_df
-            })
-
-
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-        folder_name = os.path.basename(folder_path)
-        excel_name = os.path.join(folder_path, f"Estatus {folder_name} {current_time}.xlsx")
-        message += f"\nArchivos desactualizados/faltantes escritos en {excel_name}"
-        df.to_excel(excel_name, index=False)
-
-        send_mail(df, excel_name)
+    popup = QMessageBox(window)
+    popup.setWindowTitle("Resultados de la Verificación")
+    popup.setText(message)
+    popup.setStandardButtons(QMessageBox.Ok)
+    popup.exec_()
 
 def is_outdated_yearly(file_year, file_month):
 
@@ -278,39 +401,40 @@ def is_outdated_yearly(file_year, file_month):
     else:
         return year_diff > 0
 
-def is_outdated_quarterly(file_month, reference_date):
-    '''
-    Comprubea si un archivo que se actualiza cada 3 meses necesita
-    actualización
+def is_outdated_quarterly(file_month, file_year):
+    """
+    Comprueba si un archivo trimestral está desactualizado basándose en el año y mes extraídos del nombre del archivo
+    y el mes y año actual.
 
     Argumentos:
-        file_month: el mes escrito en el archivo
-        reference_date: este argumento es el año del archivo,
-                        es aumentado por 1 cada vez que se 
-                        calcula un archivo que tiene que ser actualizado
-                        en un mes del siguiente año, es usado para wrappear
-                        alrededor de un año
-    Retorna:
-        boolean: Verdadero si esta desactualizado
-    '''
-    file_month_int = months[file_month]
-    month_diff = (current_month - file_month_int) % 12
+        file_month: Mes extraído del archivo.
+        file_year: Año extraído del archivo.
 
-    if file_month_int == 12 and current_month < file_month_int:
-        reference_date +=1 
-    return month_diff > 3 and reference_date == int(current_year)
+    Retorna:
+        boolean: Verdadero si está desactualizado.
+    """
+    current_year_full = datetime.datetime.now().year
+    current_month = datetime.datetime.now().month
+    current_quarter = (current_month - 1) // 3 + 1
+    file_quarter = (file_month - 1) // 3 + 1
+
+    if file_year < current_year_full:
+        return True
+    elif file_year == current_year_full:
+        return file_quarter < current_quarter
+    return False
 
 def select_folder():
-    '''
+    """
     Selecciona la carpeta clickeada 
-    '''
+    """
     folder_path = QFileDialog.getExistingDirectory(None, "Seleccione la carpeta")
     return folder_path
 
 def main():
-    '''
+    """
     Inicializa la interfaz grafica
-    '''
+    """
     app = QApplication([])
     window = QWidget()
     window.setWindowTitle("Verificador de archivos")
@@ -323,16 +447,6 @@ def main():
     select_folder_button = QPushButton("Seleccionar carpeta")
     select_folder_button.clicked.connect(lambda: check_files(window))
     layout.addWidget(select_folder_button)
-
-    text_area = QLabel("")
-    text_area.setWordWrap(True)
-    text_area.setStyleSheet("border: 1px solid black")
-
-    scroll_area = QScrollArea()
-    scroll_area.setWidgetResizable(True)
-    scroll_area.setWidget(text_area)
-
-    layout.addWidget(scroll_area)
 
     window.show()
     app.exec_()
