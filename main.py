@@ -5,7 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QMessageBox, QDialog, QLabel, QScrollArea
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -305,6 +305,7 @@ def write_excel_report(report_data, output_path):
         df.to_excel(writer, sheet_name=client, index=False)
 
     writer._save()
+    return df
 
 def check_files(window):
     '''
@@ -398,13 +399,41 @@ def check_files(window):
         parent_folder = os.path.dirname(folder_path)
         report_filename = os.path.join(parent_folder, 'Resultado_de_verificacion.xlsx')
         write_excel_report(report_data, report_filename)
+        df = write_excel_report(report_data, report_filename)
         QMessageBox.information(window, "Reporte Creado", f"Se ha creado el reporte en: {report_filename}")
+        send_mail(df, report_filename)
 
-    popup = QMessageBox(window)
-    popup.setWindowTitle("Resultados de la Verificación")
-    popup.setText(message)
-    popup.setStandardButtons(QMessageBox.Ok)
-    popup.exec_()
+    dialog = QDialog(window)
+    dialog.setWindowTitle("Resultados de la verificación")
+    dialog.setMinimumWidth(400)
+
+    scroll_area = QScrollArea(dialog)
+    scroll_area.setWidgetResizable(True)
+
+    scroll_content = QWidget()
+    scroll_layout = QVBoxLayout(scroll_content)
+
+    label = QLabel(message)
+    label.setWordWrap(True)
+
+    scroll_layout.addWidget(label)
+    scroll_area.setWidget(scroll_content)
+
+    main_layout = QVBoxLayout()
+    main_layout.addWidget(scroll_area)
+
+    ok_button = QPushButton("OK")
+    ok_button.clicked.connect(dialog.accept)
+    main_layout.addWidget(ok_button)
+
+    dialog.setLayout(main_layout)
+    dialog.exec_()
+
+    #popup = QMessageBox(window)
+    #popup.setWindowTitle("Resultados de la Verificación")
+    #popup.setText(message)
+    #popup.setStandardButtons(QMessageBox.Ok)
+    #popup.exec_()
 
 def is_outdated_yearly(file_year, file_month):
 
