@@ -1,5 +1,6 @@
 import os, re, datetime
 import pandas as pd
+import PyPDF2
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -29,18 +30,18 @@ months = {
 
 # Estos archivos solo se presentan una vez y no hace falta actualizarlos
 non_updating_files = [
-    "DNI",
+    "DNI",      
     "AFIP",
     "ESTATUTO",
     "DDJJ PJ 1014",
     "DDJJ SO 1013",
-    "1026",
+    "   1026",
     "AUTORIZA. APOD. 1015",
     "RF 1016",
     "SOLIC. DATOS 1004",
     "BF 1023",
     "DNI AUTORIZA.",
-    "PODERES",
+    "PODERES",  
 ]
 
 # Estos archivos se actualizan cada 3 meses
@@ -51,12 +52,27 @@ quarterly_updating_files = [
     #"DEUDAS",
 ]
 
+#Archivos requeridos por cada tipo de cliente
+required_files = {
+    'persona': {
+        "AFIP" : "AFIP", "BALANCE" : "BCE INDIV", "CERTIFICADO CUMPLIMIENTO CENSAL AGRO" : "CERTIFI. CUMPLIMIENTO CENSAL AGRO", "CERTIFICADO CUMPLIMIENTO CENSAL" : "CERTIFI. CUMPLIMIENTO CENSAL", "DECLARACION JURADA BIENES PERSONALES" : "DDJJ BIENES PERS","DECLARACION JURADA INGRESOS" : "DDJJ IIGG",
+        "DECLARACION JURADA VINCULACION ENTIDAD" : "DDJJ VINCULACION ENTIDAD","DNI" : "DNI", "FOND" : "FONDOS","INFORMACION LEGAL" : "INFO LEGAL", "DNI AUTORIZACION" : "DNI AUTORIZA",  "POD" : "PODERES"
+},
+    'pyme': {
+        "BCE" : "BALANCE", "VENT": "VENTAS", "DEUD": "DEUDAS", "FLUJOS": "FLUJ", "ACTA DE DIRECTORIO" : "ACTA DIR", "ESTATUTO" : "EST", "REFORMA DE ESTATUTO": "REFORM EST", "PODERES" : "POD", "FORMULARIO 1025" : "FORM 1025", "FORMULARIO 2006" : "FORM 2006", "FORMULARIO 2005" : "FORM 2005", "DECLARACION JURADA PJ 1014" : "DDJJ PJ 1014", "DECLARACION JURADA SO 1013" : "DDJJ SO 1013",
+        "AUTORIZACION APODERADO 1015" : "AUTORIZA. APOD. 1015", "RF. 1016" :"RF 1016", "SOLICITUD DE DATOS 1004" : "SOLIC DATOS 1004", "BF. 1023" : "BF 1023", "AFIP" : "AFIP", "DNI AUTORIZACION" : "DNI AUTORIZA", "DECLARACION JURADA VINCULACION ENTIDAD" : "DDJJ VINCULACION ENTIDAD", "CERT MIPYME" : "CERTIFICADO MIPYME"
+},                      
+    'empresa': {
+        "BCE" : "BALANCE","VENT": "VENTAS", "DEUD": "DEUDAS", "ACTA DIRECTORIO": "ACTA DIR", "FLUJOS": "FLUJ", "FLUJOS PREMISAS": "FLUJ PREM", "ACTA ASAMBLEA": "ACTA AS", "GRUPO ECO. 2005" : "GRUPO ECONOMICO", "CLIEN. NO VINC 2006": "CLIENTE NO VINCULADO", "FORM 1025" : "FORMULARIO 1025"
+    }
+}
+
 current_year = str(datetime.datetime.now().year)[-2:]
 current_month = datetime.datetime.now().month
 
 def get_client_type(folder_name):
     """
-    Identifica el tipo de cliente basado en el nombre de la carpeta.
+    Identifica el tipo de cliente basado en el nombre de la carpeta.                    
 
     Arguments:
         folder_name: Nombre de la carpeta.
@@ -64,33 +80,23 @@ def get_client_type(folder_name):
     Returns:
         client_type: Un string que representa el tipo de cliente ('persona', 'pyme', 'empresa').
     """
-    subfolders = next(os.walk(folder_name), (None, [], []))[1]
-    if not subfolders:
-        return "La carpeta esta vacia"
-    for subfolder in subfolders:
-        if re.search(r"\b\d{2}-\d{8}-\d\b", subfolder):
-            return 'persona'
-        elif 'PYME' in subfolder.upper():
-            return 'pyme'
-        elif re.search(r"\b\d{11}\b", subfolder):
-            return 'empresa'
-    
-    return 'desconocido'
-    
-required_files = {
-    'persona': [
-        "AFIP", "BCE INDIV.", "CERTIFI. CUMPLIMIENTO CENSAL AGRO", "CERTIFI. CUMPLIMIENTO CENSAL", "DDJJ BIENES PERS.", "DDJJ IIGG",
-        "DDJJ VINCULACIÓN ENTIDAD", "DNI", "FONDOS", "INFO. LEGAL", "DNI AUTORIZA", "PODERES"
-    ],
-    'pyme': [
-        "BCE", "VENT", "DEUD", "FLUJOS", "ACTA DE DIRECTORIO", "ESTATUTO", "REFORMA DE ESTATUTO", "PODERES", "FORM. 1025", "FORM. 2006", "FORM. 2005", "DDJJ PJ 1014", "DDJJ SO 1013",
-        "AUTORIZA. APOD. 1015", "RF 1016", "SOLIC. DATOS 1004", "BF 1023", "AFIP", "DNI AUTORIZA.", "DDJJ VINCULACIÓN ENTIDAD", "CERTIFICADO MIPYME"
-    ],
-    'empresa': [
-        "BCE","VENT", "DEUD", "ACTA DIRECTORIO", "FLUJOS", "FLUJOS PREMISAS", "ACTA ASAMBLEA", "GRUPO ECO. 2005", "CLIEN. NO VINC 2006", "FORM 1025"
-    ]
-}
 
+    folder_basename = os.path.basename(folder_name)
+    logger.info(f"Checking folder: {folder_basename}")  
+
+    if re.search(r"\b\d{11}\b", folder_basename):
+        logger.info(f"Identified as 'empresa': {folder_basename}")
+        return 'empresa'
+    elif 'PYME' in folder_basename.upper():
+        logger.info(f"Identified as 'pyme': {folder_basename}")
+        return 'pyme'
+    elif re.search(r"\b\d{2}-\d{8}-\d\b", folder_basename):
+        logger.info(f"Identified as 'persona': {folder_basename}")
+        return 'persona'
+    else:
+        logger.info("Identified as 'desconocido'")
+        return 'desconocido'
+    
 def get_current_year_bce_files():
     """
     Obtiene los nombres esperados de los archivos BCE para el año actual, el año anterior y dos años antes.
@@ -227,7 +233,7 @@ def send_mail(data_frame, file_path):
         data_frame: el archivo excel a enviar
     '''
     sender_email = "automation.bst@gmail.com"
-    receiver_email = "vracauchi@grupost.com.ar"#"arojas@bst.com.ar"
+    receiver_email = "federicoresano1@gmail.com"#"vracauchi@grupost.com.ar"#"arojas@bst.com.ar"
     sender_pass = "mrxb dnbt ojcm kata"
 
     msg = MIMEMultipart()
@@ -252,11 +258,11 @@ def send_mail(data_frame, file_path):
         </tr>
     """
 
-    for i in range(len(data_frame)):
-        msg_body += "<tr>"
-        msg_body += f"<td>{data_frame.iloc[i, 0]}</td>"
-        msg_body += f"<td>{data_frame.iloc[i, 1]}</td>"
-        msg_body += "</tr>"
+    clients = set(data_frame.iloc[:, 0])
+
+    for client in clients:
+        msg_body += f"<tr><td>{client}</td></tr>"
+
 
     msg_body += """
     </table>
@@ -288,7 +294,7 @@ def send_mail(data_frame, file_path):
     except Exception as e:
         logger.error("Error: %s", e)
 
-def write_excel_report(report_data, output_path):
+def write_excel_report(outdated_data, missing_data, output_path):
     """
     Escribe un excel en el directorio que contiene los clientes.
 
@@ -298,14 +304,15 @@ def write_excel_report(report_data, output_path):
     """
     writer = pd.ExcelWriter(output_path, engine='xlsxwriter')
 
-    for client, data in report_data.items():
-        if not data:
-            continue
-        df = pd.DataFrame(data, columns=['Desactualizados', 'Faltantes'])
-        df.to_excel(writer, sheet_name=client, index=False)
+    df_outdated = pd.DataFrame(outdated_data, columns=['Cliente', 'Tipo', 'Archivo', 'Carpeta'])
+    df_outdated.to_excel(writer, sheet_name='Desactualizados', index=False)
+
+    df_missing = pd.DataFrame(missing_data, columns=['Cliente', 'Tipo', 'Archivo', 'Carpeta'])
+    df_missing.to_excel(writer, sheet_name='Faltantes', index=False)
 
     writer._save()
-    return df
+    return df_outdated, df_missing
+
 
 def check_files(window):
     '''
@@ -326,8 +333,8 @@ def check_files(window):
         QMessageBox.warning(window, "Error", "No se encontraron carpetas de clientes.")
         return
 
-    all_outdated_files = {}
-    all_missing_files = {}
+    all_outdated_files = []
+    all_missing_files = []
 
     for client_folder in client_folders:
         client_path = os.path.join(folder_path, client_folder)
@@ -352,56 +359,47 @@ def check_files(window):
 
         for key, count in file_count.items():
             if count < 1:
-                missing_files.append(f"{key} ({client_folder})")
+                 missing_files.append((client_folder, client_type, key, client_path))
 
         non_updating_missing_files = []
         for non_updating_file in important_files:
             if not any(non_updating_file.lower() in file.lower() for file in all_files):
-                non_updating_missing_files.append(f"{non_updating_file} ({client_folder})")
+                non_updating_missing_files.append((client_folder, client_type, non_updating_file, client_path))
 
-        all_outdated_files[client_folder] = [(os.path.basename(file[0]).replace('.', ''), file[1]) for file in outdated_files]
-        all_missing_files[client_folder] = missing_files + non_updating_missing_files
+        for file in outdated_files:
+            all_outdated_files.append((client_folder, client_type, os.path.basename(file[0]).replace('.', ''), file[1]))
 
+        all_missing_files.extend(missing_files + non_updating_missing_files)
+        
     message = ""
 
-    if any(all_missing_files.values()):
-        for client_folder, missing_files in all_missing_files.items():
-            if missing_files:
-                missing_files_str = "\n".join(missing_files)
-                message += (
-                    "=======================================================================================\n"
-                    f"IMPORTANTE: Faltan los siguientes ({len(missing_files)}) archivos importantes para el cliente {client_folder}:\n"
-                    "=======================================================================================\n"
-                    f"{missing_files_str}\n"
-                )
+    if all_missing_files:
+        message += (
+            "=======================================================================================\n"
+            "IMPORTANTE: Se encontraron archivos importantes faltantes:\n"
+            "=======================================================================================\n"
+        )
+        for file in all_missing_files:
+            message += f"{file[0]} ({file[2]}) en {file[3]}\n"
 
-    if any(all_outdated_files.values()):
-        for client_folder, outdated_files in all_outdated_files.items():
-            if outdated_files:
-                message += (
-                    "=======================================================================================\n"
-                    f"ADVERTENCIA: Los siguientes archivos ({len(outdated_files)}) están desactualizados para el cliente {client_folder}:\n"
-                    "=======================================================================================\n"
-                )
-                outdated_list = "\n".join(f" - {file[0]} ({file[1]})" for file in outdated_files)
-                message += outdated_list + "\n"
+    if all_outdated_files:
+        message += (
+            "=======================================================================================\n"
+            "ADVERTENCIA: Se encontraron archivos desactualizados:\n"
+            "=======================================================================================\n"
+        )
+        for file in all_outdated_files:
+            message += f"{file[0]} ({file[2]}) en {file[3]}\n"
 
     if not message:
         message = "\nNo se encontraron archivos desactualizados o faltantes para ninguno de los clientes."
 
-    report_data = {}
-
-    for client, outdated_files in all_outdated_files.items():
-        missing_files = all_missing_files.get(client, [])
-        report_data[client] = [(out_file[0], "") for out_file in outdated_files] + [(miss_file, "") for miss_file in missing_files]
-
-    if report_data:
+    if all_outdated_files or all_missing_files:
         parent_folder = os.path.dirname(folder_path)
         report_filename = os.path.join(parent_folder, 'Resultado_de_verificacion.xlsx')
-        write_excel_report(report_data, report_filename)
-        df = write_excel_report(report_data, report_filename)
+        df_outdated, df_missing = write_excel_report(all_outdated_files, all_missing_files, report_filename)
         QMessageBox.information(window, "Reporte Creado", f"Se ha creado el reporte en: {report_filename}")
-        send_mail(df, report_filename)
+        send_mail(pd.concat([df_outdated, df_missing]), report_filename)
 
     dialog = QDialog(window)
     dialog.setWindowTitle("Resultados de la verificación")
