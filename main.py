@@ -1,6 +1,5 @@
 import os, re, datetime
 import pandas as pd
-import PyPDF2
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
