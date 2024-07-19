@@ -8,7 +8,7 @@ from email import encoders
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QMessageBox, QDialog, QLabel, QScrollArea
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)     
 logger = logging.getLogger(__name__)
 
 # Diccionario de meses para usar sus valores numericos.
