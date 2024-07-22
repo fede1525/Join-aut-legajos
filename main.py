@@ -34,7 +34,7 @@ non_updating_files = [
     "ESTATUTO",
     "DDJJ PJ 1014",
     "DDJJ SO 1013",
-    "   1026",
+    "1026",
     "AUTORIZA. APOD. 1015",
     "RF 1016",
     "SOLIC. DATOS 1004",
@@ -73,10 +73,10 @@ def get_client_type(folder_name):
     """
     Identifica el tipo de cliente basado en el nombre de la carpeta.                    
 
-    Arguments:
+    Argumentos:
         folder_name: Nombre de la carpeta.
 
-    Returns:
+    Retorna:
         client_type: Un string que representa el tipo de cliente ('persona', 'pyme', 'empresa').
     """
 
@@ -232,7 +232,7 @@ def send_mail(data_frame, file_path):
         data_frame: el archivo excel a enviar
     '''
     sender_email = "automation.bst@gmail.com"
-    receiver_email = "federicoresano1@gmail.com"#"vracauchi@grupost.com.ar"#"arojas@bst.com.ar"
+    receiver_email = "vracauchi@grupost.com.ar"#"federicoresano1@gmail.com"#"arojas@bst.com.ar"
     sender_pass = "mrxb dnbt ojcm kata"
 
     msg = MIMEMultipart()
@@ -297,7 +297,7 @@ def write_excel_report(outdated_data, missing_data, output_path):
     """
     Escribe un excel en el directorio que contiene los clientes.
 
-    Arguments:
+    Argumentos:
         report_data: Diccionario que contiene la información para el reporte.
         output_path: Directorio donde el excel se escribe.
     """
